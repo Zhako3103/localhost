@@ -5,6 +5,7 @@ use crate::config::{Route, ServerConfig};
 use crate::http::{
     default_error_page, html_escape, find, mime_type, pct_encode, query_param, Request, Response,
 };
+use crate::page;
 use crate::router;
 use crate::session::SessionStore;
 use std::fs;
@@ -252,24 +253,37 @@ fn autoindex(dir: &Path, req_path: &str) -> Result<Response, u16> {
     }
     entries.sort();
 
-    let mut html = format!(
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Index of {0}</title></head>\
-         <body><h1>Index of {0}</h1><hr><ul>",
-        html_escape(req_path)
-    );
+    let mut items = String::new();
     if req_path != "/" {
-        html.push_str("<li><a href=\"../\">../</a></li>");
+        items.push_str(
+            "<li><a href=\"../\"><span class=\"icon\">⬆️</span><span>../</span></a></li>",
+        );
     }
-    for (name, is_dir) in entries {
-        let mut href = pct_encode(&name, false);
-        let mut label = html_escape(&name);
-        if is_dir {
+    for (name, is_dir) in &entries {
+        let mut href = pct_encode(name, false);
+        let mut label = html_escape(name);
+        if *is_dir {
             href.push('/');
             label.push('/');
         }
-        html.push_str(&format!("<li><a href=\"{}\">{}</a></li>", href, label));
+        items.push_str(&format!(
+            "<li><a href=\"{}\"><span class=\"icon\">{}</span><span>{}</span></a></li>",
+            href,
+            if *is_dir { "📁" } else { "📄" },
+            label
+        ));
     }
-    html.push_str("</ul><hr></body></html>\n");
+    let esc_path = html_escape(req_path);
+    let inner = format!(
+        "<header class=\"hero\"><div class=\"status-badge\"><span class=\"pulse-dot\"></span> Directory</div>\
+         <h1>Index of <span>{}</span></h1><p class=\"subtitle\">Элементов: {}</p></header>\
+         <ul class=\"file-list\">{}</ul>\
+         <a class=\"btn-upload btn-link\" href=\"/\">На главную</a>",
+        esc_path,
+        entries.len(),
+        items
+    );
+    let html = page::page(&format!("Index of {}", esc_path), &inner);
     Ok(Response::with_body(200, "text/html; charset=utf-8", html.into_bytes()))
 }
 
@@ -435,8 +449,26 @@ fn upload(route: &Route, req: &Request, fs_path: &Path) -> Result<Response, u16>
         let name = save_unique(&dir, &wanted, &req.body).map_err(|e| io_status(&e))?;
         saved.push(name);
     }
-    let body = format!("Uploaded: {}\n", saved.join(", "));
-    Ok(Response::with_body(201, "text/plain; charset=utf-8", body.into_bytes()))
+    let text = format!("Uploaded: {}", saved.join(", "));
+    let wants_html = req.header("accept").map_or(false, |a| a.contains("text/html"));
+    if !wants_html {
+        return Ok(Response::with_body(
+            201,
+            "text/plain; charset=utf-8",
+            format!("{}\n", text).into_bytes(),
+        ));
+    }
+    let back = format!("{}/", req.path.trim_end_matches('/'));
+    let inner = format!(
+        "<header class=\"hero\"><div class=\"status-badge\"><span class=\"pulse-dot\"></span> 201 Created</div>\
+         <h1>Файл <span>загружен</span></h1><p class=\"subtitle\">{}</p></header>\
+         <a class=\"btn-upload btn-link\" href=\"{}\">К загрузкам</a> \
+         <a class=\"btn-upload btn-link\" href=\"/\">На главную</a>",
+        html_escape(&text),
+        html_escape(&pct_encode(&back, true))
+    );
+    let html = page::page("201 Created", &inner);
+    Ok(Response::with_body(201, "text/html; charset=utf-8", html.into_bytes()))
 }
 
 // ----------------------------------------------------------------- delete

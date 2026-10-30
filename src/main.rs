@@ -3,6 +3,7 @@ mod config;
 mod epoll;
 mod handler;
 mod http;
+mod page;
 mod router;
 mod server;
 mod session;

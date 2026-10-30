@@ -578,14 +578,32 @@ impl Response {
     }
 }
 
+pub fn error_hint(code: u16) -> &'static str {
+    match code {
+        400 => "Сервер не смог разобрать запрос.",
+        403 => "Доступ к этому ресурсу запрещён.",
+        404 => "Такой страницы здесь нет.",
+        405 => "Этот метод не разрешён для данного адреса.",
+        408 => "Время ожидания запроса истекло.",
+        413 => "Тело запроса больше допустимого размера.",
+        500 => "Внутренняя ошибка сервера.",
+        503 => "Сервис временно недоступен.",
+        504 => "Скрипт не ответил вовремя.",
+        _ => "",
+    }
+}
+
 pub fn default_error_page(code: u16) -> Vec<u8> {
-    format!(
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{0} {1}</title></head>\
-         <body><h1>{0} {1}</h1><hr><p>localhost-rs/1.0</p></body></html>\n",
-        code,
-        reason(code)
-    )
-    .into_bytes()
+    let inner = format!(
+        "<header class=\"hero\"><div class=\"status-badge\"><span class=\"pulse-dot red\"></span> Ошибка</div>\
+         <h1><span>{code}</span> {reason}</h1><p class=\"subtitle\">{hint}</p></header>\
+         <a class=\"btn-upload btn-link\" href=\"/\">На главную</a>\
+         <p class=\"footnote\">localhost-rs/1.0</p>",
+        code = code,
+        reason = reason(code),
+        hint = error_hint(code)
+    );
+    crate::page::page(&format!("{} {}", code, reason(code)), &inner).into_bytes()
 }
 
 // ------------------------------------------------------------------ tests
