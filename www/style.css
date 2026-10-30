@@ -1,0 +1,270 @@
+:root {
+  --bg-primary: #121316;
+  --bg-secondary: #1a1c23;
+  --bg-tertiary: #232631;
+  --text-normal: #e4e6eb;
+  --text-muted: #9ca3af;
+  --header-primary: #ffffff;
+  --accent-blue: #6366f1;
+  --accent-blue-hover: #4f46e5;
+  --accent-purple: #a855f7;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --input-bg: #15171e;
+  --glow-color: rgba(99, 102, 241, 0.15);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f1f5f9;
+    --text-normal: #1e293b;
+    --text-muted: #64748b;
+    --header-primary: #0f172a;
+    --accent-blue: #4f46e5;
+    --accent-blue-hover: #4338ca;
+    --accent-purple: #9333ea;
+    --border-color: rgba(0, 0, 0, 0.08);
+    --input-bg: #f8fafc;
+    --glow-color: rgba(79, 70, 229, 0.1);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', 'gg sans', 'Noto Sans', 'Helvetica Neue', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-normal);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow-x: hidden;
+  padding: 20px;
+}
+
+/* Красивые плавающие световые пятна на фоне */
+.blob {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  filter: blur(100px);
+  border-radius: 50%;
+  z-index: 0;
+  opacity: 0.25;
+  pointer-events: none;
+}
+.blob-1 { top: -100px; left: -100px; }
+.blob-2 { bottom: -100px; right: -100px; }
+
+/* Главный контейнер ( Glassmorphism ) */
+.container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 680px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 40px var(--glow-color);
+  backdrop-filter: blur(10px);
+}
+
+/* Шапка */
+.hero {
+  margin-bottom: 28px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  margin-bottom: 12px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #22c55e;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px #22c55e; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+h1 {
+  color: var(--header-primary);
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+h1 span {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-top: 6px;
+}
+
+h2 {
+  color: var(--header-primary);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  margin-top: 24px;
+}
+
+/* Сетка навигации */
+.nav-grid {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-grid li a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text-normal);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-grid li a:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-blue);
+  background: linear-gradient(to right, var(--bg-tertiary), var(--bg-secondary));
+  box-shadow: 0 4px 12px var(--glow-color);
+}
+
+.nav-grid .icon {
+  font-size: 1.25rem;
+  margin-right: 14px;
+}
+
+.link-info {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.link-info strong {
+  font-size: 0.95rem;
+  color: var(--header-primary);
+}
+
+.link-info span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.nav-grid li a:hover .arrow {
+  transform: translateX(4px);
+  color: var(--accent-blue);
+}
+
+/* Форма загрузки */
+.upload-form {
+  background-color: var(--bg-tertiary);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.file-drop-area {
+  background-color: var(--input-bg);
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.file-drop-area:hover {
+  border-color: var(--accent-blue);
+}
+
+.file-drop-area input[type="file"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-msg {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.file-msg strong {
+  color: var(--accent-blue);
+}
+
+.btn-upload {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: white;
+  border: none;
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 4px 12px var(--glow-color);
+}
+
+.btn-upload:hover {
+  opacity: 0.9;
+}
+
+.btn-upload:active {
+  transform: scale(0.98);
+}
