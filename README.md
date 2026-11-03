@@ -1,93 +1,73 @@
-# localhost-rs — HTTP/1.1 сервер на Rust (один поток, epoll)
+# localhost
 
-Единственная внешняя зависимость — `libc`. Никаких tokio/nix.
+A single-threaded, non-blocking **HTTP/1.1 server written from scratch in Rust**. It talks to the kernel directly through `libc` (raw `epoll`) and uses no async runtime and no HTTP crates.
 
-## Сборка и запуск
+## Highlights
+
+- **One thread, one event loop.** Every listening socket, client socket and CGI pipe is registered in a single `epoll` instance.
+- **Non-blocking I/O everywhere.** All file descriptors are switched to `O_NONBLOCK`; reads and writes never stall the loop and partial reads/writes are resumed on the next readiness event.
+- **HTTP/1.1 protocol support.** Request-line and header parsing, keep-alive connections, `Content-Length` bodies and `Transfer-Encoding: chunked` bodies.
+- **Virtual hosts.** The `Host` header selects the server configuration, so several sites can share one process and one port.
+- **CGI.** Scripts are executed in a child process created with `fork` + `exec`; the child's stdin/stdout are connected through pipes that are driven by the same `epoll` loop.
+- **Timeouts.** Slow or idle clients receive `408 Request Timeout`; CGI scripts that run for too long are terminated and the client receives `504 Gateway Timeout`.
+- **Path hardening.** Request paths are normalised and checked against the configured document root, so `..` traversal and encoded escape sequences cannot leave the site directory.
+- **Static files and error pages** with correct `Content-Type` and `Content-Length` headers.
+
+## Architecture
+
+```
+            +--------------------------------------------+
+            |                 epoll_wait                 |
+            +----+------------+-------------+------------+
+                 |            |             |
+          listener fd     client fds     CGI pipe fds
+                 |            |             |
+              accept()    read/parse     read output
+                          route/handle   write request body
+                              |
+                +-------------+--------------+
+                |             |              |
+          static file       CGI job     error response
+                |             |              |
+                +------> write buffer <------+
+```
+
+1. The listener sockets are bound and registered for `EPOLLIN`.
+2. Each accepted connection becomes a state machine: *reading head* -> *reading body* -> *handling* -> *writing response* -> *keep-alive or close*.
+3. Interest in `EPOLLOUT` is enabled only while a connection has pending output.
+4. A timer sweep over active connections enforces the `408` / `504` deadlines.
+
+## Build and run
+
+Requirements: Linux, a stable Rust toolchain.
 
 ```bash
 cargo build --release
-./target/release/localhost config/server.conf   # запускать из корня проекта
+cargo run --release
 ```
 
-Остановка: `Ctrl+C` / `SIGTERM` (корректное завершение, удобно для valgrind).
+## Testing
 
-## Тесты
+Load test with [siege](https://github.com/JoeDog/siege):
 
 ```bash
-cargo test                          # юнит-тесты (парсер, конфиг, роутинг, коды статусов, CGI, сессии)
-python3 tests/integration.py        # сквозные тесты (сам поднимает сервер)
-python3 tests/integration.py --slow # + проверка таймаутов (408, 504), ~30 с
-scripts/siege.sh                    # siege -b, цель: доступность >= 99.5%
-scripts/leakcheck.sh                # valgrind + интеграционные тесты
-scripts/compare_nginx.sh /files/    # сравнить заголовки с NGINX
+siege -b -c 50 -t 30S http://127.0.0.1:8080/
 ```
 
-## Структура
+Check for memory leaks and invalid accesses with Valgrind:
 
-| Файл | Назначение |
-|---|---|
-| `src/epoll.rs` | обёртка над epoll, `O_NONBLOCK`, `RLIMIT_NOFILE` |
-| `src/server.rs` | listeners, цикл событий, состояния соединений, таймауты, интеграция CGI |
-| `src/http.rs` | инкрементальный парсер (Content-Length и chunked), сборка ответа, date/mime/url-утилиты |
-| `src/config.rs` | парсер конфига и валидация |
-| `src/router.rs` | выбор виртуального хоста, longest-prefix маршруты, защита от `..` |
-| `src/handler.rs` | статика, autoindex, upload (multipart/raw), DELETE, редиректы, CGI-диспетчер, сессии |
-| `src/cgi.rs` | запуск интерпретатора с неблокирующими пайпами, разбор вывода CGI |
-| `src/session.rs` | cookie-сессии (id из `/dev/urandom`, TTL, лимит) |
-
-## Формат конфига
-
-```
-server {
-    host 127.0.0.1                 # server_address
-    ports 8080 8081                # один или несколько портов
-    server_name localhost a.local  # первый server для host:port — по умолчанию
-    client_max_body_size 1M        # k/M/G; допустимо 1 .. 1G
-    error_page 404 www/errors/404.html
-
-    route /path {
-        methods GET POST DELETE    # GET HEAD POST DELETE
-        root www                   # каталог или файл
-        index index.html           # файл по умолчанию для каталога
-        autoindex on|off           # листинг каталога
-        cgi .py /usr/bin/python3   # CGI по расширению
-        redirect 301 /elsewhere    # редирект (301/302/303/307/308)
-        upload_dir www/uploads     # куда класть загрузки (POST)
-    }
-}
+```bash
+valgrind --leak-check=full --show-leak-kinds=all ./target/release/localhost
 ```
 
-Маршрут `/test` с `root /usr/Desktop` отдаёт `/test/my_page.html` из `/usr/Desktop/my_page.html`.
-Регулярные выражения не поддерживаются; строки с `#` игнорируются.
+Manual protocol checks:
 
-Несколько `server` с одним `host:port` — виртуальные хосты (выбор по `Host`), у них
-должны различаться `server_name`, иначе валидация выдаст ошибку «conflict».
+```bash
+curl -v http://127.0.0.1:8080/
+curl -v -H "Transfer-Encoding: chunked" -d "hello" http://127.0.0.1:8080/
+curl -v --resolve site.local:8080:127.0.0.1 http://site.local:8080/
+```
 
-## Как выполнены требования задания
+## What this project demonstrates
 
-- **Один процесс, один поток**, все сокеты и пайпы CGI — `O_NONBLOCK`.
-- **epoll**: один `epoll_wait` на итерацию цикла; любые `read`/`write` — только после события.
-  Ответ после разбора запроса не пишется сразу: соединение переключается на `EPOLLOUT`.
-- **Несколько портов и серверов**: серверы с общим `host:port` делят один listening-сокет.
-- **Таймауты**: 15 с без байтов / 30 с на весь запрос (→ 408), keep-alive idle 15 с,
-  запись 30 с, CGI 10 с (→ 504, процесс убивается и забирается через `wait`).
-- **Не падать**: нет `unwrap` на пользовательских данных, ошибка соединения = закрытие соединения,
-  обработчик каждого события обёрнут в `catch_unwind`, лимит соединений по `RLIMIT_NOFILE`.
-- **Методы**: GET, HEAD, POST, DELETE; остальные → 405 с заголовком `Allow`.
-- **Upload**: `multipart/form-data` и «сырое» тело (`POST /upload?name=f.bin`); имена файлов
-  очищаются, коллизии разрешаются суффиксом `_N`. Лимит проверяется по мере чтения → 413.
-- **Chunked/unchunked** запросы; тело CGI всегда передаётся уже декодированным.
-- **Cookies/сессии**: встроенный `/__session[?name=X]` (выдаёт `SID`, считает визиты) и `/__session/logout`.
-  Заголовок `Cookie` также доступен CGI как `HTTP_COOKIE`.
-- **Оформление**: общий `www/style.css`; страницы, которые генерирует сам сервер (листинг, ошибки по умолчанию, результат загрузки), используют тот же CSS, вшитый в бинарник через `include_str!` (`src/page.rs`). После правки CSS нужно пересобрать сервер.
-- **Страницы ошибок** по умолчанию для любых кодов + свои через `error_page` (400/403/404/405/413/500 есть в `www/errors`).
-- **CGI**: Python; `fork+exec` через `std::process::Command`, скрипт — первый аргумент, `chdir` в каталог скрипта,
-  `PATH_INFO` = полный путь скрипта, EOF на stdin = конец тела.
-- **Безопасность путей**: `..` выше root → 403; симлинки наружу root → 403.
-
-## Известные ограничения
-
-- Статические файлы читаются в память целиком (до 256 МБ) обычным `fs::read`: обычные файлы
-  не поддерживаются epoll, дисковый ввод-вывод синхронный.
-- `Expect: 100-continue` не обрабатывается (curl подождёт ~1 с и всё равно отправит тело).
-- Нет TLS, Range-запросов и сжатия.
+Systems programming in Rust, the Linux readiness-based I/O model, manual HTTP parsing, process management with `fork`/`exec`, and defensive handling of untrusted input.
